@@ -1,0 +1,38 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+load("@bazel_gazelle//:def.bzl", "gazelle")
+
+go_binary(
+    name = "hello",
+    embed = [":bot_lib"],
+    visibility = ["//visibility:public"],
+)
+
+gazelle(name = "auto")
+
+go_library(
+    name = "bot_lib",
+    srcs = [
+        #"apidemo.go",
+        #"db_tool.go",
+        "search_bot.go",
+        #"test.go",
+    ],
+    importpath = "bot",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//db",
+        "//lib",
+        "//model",
+    ],
+)
+
+go_binary(
+    name = "db_tool",
+	srcs = [
+			"db_tool.go",
+			],
+	visibility = ["//visibility:public"],
+	deps = [
+			"//db",
+			],
+	)
