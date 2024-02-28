@@ -3340,3 +3340,12 @@ type ReplyParameters struct {
 type LinkPreviewOptions struct {
 	IsDisable bool `json:"is_disabled,omitempty"`
 }
+
+type TopFeed struct {
+	UserName string `json:"username"`
+	ShowText string `json:"show_text"`
+}
+
+type SearchTopFeeds struct {
+	Feeds []TopFeed `json:"feed"`
+}

@@ -55,7 +55,7 @@ func (bot *TBot)Call(config interface{})error{
 		lib.XLogErr("not ok", api_res)
 		return errors.New(api_res.Description)
 	}
-	lib.XLogInfo(string(param), rsp)
+	//lib.XLogInfo(string(param), rsp)
 
 	obj_val := reflect.ValueOf(config)
 	res_value := obj_val.Elem().FieldByName("Response")

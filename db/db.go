@@ -4,8 +4,8 @@ import (
     "context"
     "github.com/redis/go-redis/v9"
 	"encoding/json"
-	"errors"
-	"log"
+///	"log"
+	"time"
 )
 
 var ctx = context.Background()
@@ -25,14 +25,7 @@ func Del(key string) error {
 }
 
 func Get(key string) (string, error){
-	val, err := g_redis_cli.Get(ctx, key).Result()
-	if err == redis.Nil {
-		return val, errors.New("key not exists")
-	} else if err != nil {
-		return val, err
-	} else {
-		return val, nil
-	}
+	return g_redis_cli.Get(ctx, key).Result()
 }
 
 func IsValueInSet(key, value string)(bool, error){
@@ -82,7 +75,7 @@ func Search(pattern string, offset uint64, limit int64)([]string, uint64, error)
 	if err != nil {
 		return keys, 0, err
 	}
-	log.Println(pattern, offset, limit, keys, cursor)
+	//log.Println(pattern, offset, limit, keys, cursor)
 	return keys, cursor, nil
 }
 
@@ -95,4 +88,30 @@ func BatchGetStruct(keys ...string)([]interface{}, error){
 	return objs, nil
 }
 
+func LPush(key string, values...interface{})error{
+	return g_redis_cli.LPush(ctx, key, values...).Err()
+}
 
+func LRange(key string, start, end int64)([]string, error){
+	return g_redis_cli.LRange(ctx, key, start, end).Result()
+}
+
+func Expire(key string, expire time.Duration)error{
+	return g_redis_cli.Expire(ctx, key, expire).Err()
+}
+
+func LLen(key string)(int64, error){
+	return g_redis_cli.LLen(ctx, key).Result()
+}
+
+func Exists(key...string)(bool, error){
+	val, err := g_redis_cli.Exists(ctx, key...).Result()
+	if err != nil {
+		return false, err
+	}
+	if val == 1{
+		return true, nil
+	} else{
+		return false, nil
+	}
+}

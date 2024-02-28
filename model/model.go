@@ -197,6 +197,8 @@ type AnswerCallbackQueryConfig struct {
 	ShowAlert bool `json:"show_alert"`
 	Url string `json:"url"`
 	CacheTime int64 `json:"cache_time"`
+
+	Response bool `json:"result,omitempty"`
 }
 
 type DeleteMessageConfig struct {
@@ -221,6 +223,19 @@ type SendMessageConfig struct {
 	ProtectContent bool `json:"protect_content,omitempty"`
 	ReplyParams ReplyParameters `json:"reply_parameters,omitempty"`
 	ReplyMarkup any `json:"reply_markup,omitempty"`
+
+	Response Message `json:"result,omitempty"`
+}
+
+type EditMessageTextConfig struct {
+	ChatID any `json:"chat_id,omitempty"`
+	MessageID int `json:"message_id,omitempty"`
+	InlineMessageID string `json:"inline_message_id,omitempty"`
+	Text string `json:"text,omitempty"`
+	ParseMode string `json:"parse_mode,omitempty"`
+	Entities []MessageEntity `json:"entities,omitempty"`
+	LinkPreviewOption LinkPreviewOptions `json:"link_preview_options"`
+	ReplyMarkup InlineKeyboardMarkup `json:"reply_markup,omitempty"`
 
 	Response Message `json:"result,omitempty"`
 }

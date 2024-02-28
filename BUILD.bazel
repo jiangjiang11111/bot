@@ -23,16 +23,15 @@ go_library(
         "//db",
         "//lib",
         "//model",
+        "@com_github_redis_go_redis_v9//:go-redis",
     ],
 )
 
 go_binary(
     name = "db_tool",
-	srcs = [
-			"db_tool.go",
-			],
-	visibility = ["//visibility:public"],
-	deps = [
-			"//db",
-			],
-	)
+    srcs = ["db_tool.go"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//db",
+    ],
+)
