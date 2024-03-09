@@ -89,21 +89,18 @@ type SendChatActionConfig struct {
 	Action string `json:"action"`
 }
 
-type ChatPermission struct {
-	CanSendMessage bool `json:"can_send_messages"`
-	CanSendPhoto bool `json:"can_send_photos"`
-}
-
 type SetChatPermissionsConfig struct {
 	ChatID int64 `json:"chat_id"`
-	Permissions ChatPermission `json:"permissions"`
+	Permissions ChatPermissions `json:"permissions"`
 }
 
 type RestrictChatMemberConfig struct {
 	BoolConfig
-	ChatID int64 `json:"chat_id"`
+	ChatID any `json:"chat_id"`
 	UserID int64 `json:"user_id"`
-	Permissions ChatPermission `json:"permissions"`
+	Permissions ChatPermissions `json:"permissions"`
+
+	Response bool `json:"result,omitempty"`
 }
 
 type PromoteChatMemberConfig struct {

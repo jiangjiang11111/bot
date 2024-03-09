@@ -17,6 +17,8 @@ import (
 var g_sBotKey = "" 
 var g_lSuperUser []string
 var g_iPageCount = int64(20)
+var g_bFreqCheck = false
+var g_iKeyExpire = time.Minute * 5
 
 func CheckSuperUser(user string)bool{
 	for _, val := range g_lSuperUser{
@@ -50,18 +52,18 @@ func GetTitleAndDesMap(keys []string)(map[string]string, map[string]string){
 	}
 	for _, val := range titles{
 		t, _ := val.(string)
-		items := strings.Split(t, "_")
+		items := strings.Split(t, "$$$")
 		if len(items) != 2{
-			//lib.XLogErr("split", val, items)
+			lib.XLogErr("split", val, items)
 			continue
 		}
 		mapTitle[items[1]] = items[0]
 	}
 	for _, val := range dess{
 		t, _ := val.(string)
-		items := strings.Split(t, "_")
+		items := strings.Split(t, "$$$")
 		if len(items) != 2{
-			//lib.XLogErr("split", val, items)
+			lib.XLogErr("split", val, items)
 			continue
 		}
 		mapDes[items[1]] = items[0]
@@ -69,44 +71,42 @@ func GetTitleAndDesMap(keys []string)(map[string]string, map[string]string){
 	return mapTitle, mapDes
 }
 
-func Index(groupid int64, title, des string)error{
-	str_id := strconv.FormatInt(groupid, 10)
-	key_title := title + "_" + str_id
-	key_des := des + "_" + str_id
+func Index(username, title, des string)error{
+	key_title := title + "$$$" + username
+	key_des := des + "$$$" + username
 	err := db.Set(key_title, "1")
 	if err != nil {
-		lib.XLogErr(err, groupid, title)
+		lib.XLogErr(err, username, title)
 		return err
 	}
 	err = db.Set(key_des, "1")
 	if err != nil {
-		lib.XLogErr(err, groupid, des)
+		lib.XLogErr(err, username, des)
 		return err
 	}
-	err = db.Set(str_id + "_title", key_title)
+	err = db.Set(username + "_title", key_title)
 	if err != nil {
-		lib.XLogErr(err, str_id, key_title)
+		lib.XLogErr(err, username, key_title)
 		return err
 	}
-	err = db.Set(str_id + "_des", key_des)
+	err = db.Set(username + "_des", key_des)
 	if err != nil {
-		lib.XLogErr(err, str_id, key_des)
+		lib.XLogErr(err, username, key_des)
 		return err
 	}
-	lib.XLogInfo("index", groupid, title, des)
+	lib.XLogInfo("index", username, title, des)
 	return nil
 }
 
-func DeleteIndex(groupid int64)error{
-	str_id := strconv.FormatInt(groupid, 10)
-	key_title, err := db.Get(str_id + "_title")
+func DeleteIndex(username string)error{
+	key_title, err := db.Get(username + "_title")
 	if err != nil {
-		lib.XLogErr("get key_title", err, str_id)
+		lib.XLogErr("get key_title", err, username)
 		return err
 	}
-	key_des, err := db.Get(str_id + "_des")
+	key_des, err := db.Get(username + "_des")
 	if err != nil {
-		lib.XLogErr("get key_des", err, str_id)
+		lib.XLogErr("get key_des", err, username)
 		return err
 	}
 	err = db.Del(key_title)
@@ -122,15 +122,15 @@ func DeleteIndex(groupid int64)error{
 	return nil
 }
 
-func UpdateIndex(groupid int64, title, des string)error{
-	err := DeleteIndex(groupid)
+func UpdateIndex(username, title, des string)error{
+	err := DeleteIndex(username)
 	if err != nil {
-		lib.XLogErr("DeleteIndex", groupid)
+		lib.XLogErr("DeleteIndex", username)
 		return err
 	}
-	err = Index(groupid, title, des)
+	err = Index(username, title, des)
 	if err != nil {
-		lib.XLogErr("index", err, groupid, title, des)
+		lib.XLogErr("index", err, username, title, des)
 		return err
 	}
 	return nil
@@ -157,9 +157,12 @@ func SearchIndex(keyword string, offset uint64, limit int64)([]string, uint64, e
 	}
 	lib.XLogInfo(cmd, offset, limit, keys, cursor)
 	for _, key := range keys{
-		vals := strings.Split(key, "_")
-		if len(vals) == 0 {
+		vals := strings.Split(key, "$$$")
+		if len(vals) != 2 {
 			lib.XLogErr("invalid id", key)
+			if err := db.Expire(key, time.Second * 1); err != nil {
+				lib.XLogErr("Expire", err, key)
+			}
 			continue
 		}
 		str_id := vals[len(vals)-1]
@@ -202,6 +205,12 @@ func InitConfig(){
 		}else if line[0 : idx] == "page_count"{
 			if tmp, err := strconv.ParseInt(line[idx + 1:], 10, 64); err == nil{
 				g_iPageCount = tmp
+			}
+		}else if line[0: idx] == "freq_check"{
+			g_bFreqCheck = line[idx + 1:] == "1"
+		} else if line[0: idx] == "key_expire"{
+			if tmp, err := strconv.Atoi(line[idx + 1:]); err == nil{
+				g_iKeyExpire = time.Second * time.Duration(tmp)
 			}
 		}
 	}
@@ -269,6 +278,7 @@ func ProcessSearch(tb model.TBot, msg *model.Message){
 	// get all hit keys
 	var total_keys []string
 	var cursor uint64
+	mapExist := make(map[string]bool)
 	cursor = 0
 	for {
 		keys, tmp_cursor, err := SearchIndex(keyword, cursor, 100)
@@ -277,7 +287,14 @@ func ProcessSearch(tb model.TBot, msg *model.Message){
 			return
 		}
 		cursor = tmp_cursor
-		total_keys = append(total_keys, keys...)
+		for _, val := range keys {
+			if _, ok := mapExist[val]; ok {
+				lib.XLogErr("repeated keys", val)
+				continue
+			}
+			mapExist[val] = true
+			total_keys = append(total_keys, val)
+		}
 		if tmp_cursor == 0 {
 			break;
 		}
@@ -290,33 +307,22 @@ func ProcessSearch(tb model.TBot, msg *model.Message){
 		return
 	}
 	if hit {
-		// TODO
-		// 频繁操作会被封号的
-		Warning(tb, msg.Chat.ID, msg.MessageID, msg.From.UserName, "频繁操作会被封号的!")
-	}
-
-	total_count, err := db.LLen(result_key)
-	if err != nil {
-		lib.XLogErr("LLen", err, result_key)
-		return
-	}
-	// 已经存在过了
-	if total_count > 0{
-		lib.XLogErr("操作频繁")
-		return
+		if (g_bFreqCheck){
+			lib.XLogErr("hit freq check", result_key)
+			Warning(tb, msg.Chat.ID, msg.MessageID, msg.From.UserName, msg.From.ID, "频繁操作会被封号的!")
+			return
+		} else {
+			if err := db.Expire(result_key, time.Second * 0); err != nil {
+				lib.XLogErr("Expire", err, result_key)
+			}
+		}
 	}
 	if err := db.LPush(result_key, total_keys); err != nil {
 		lib.XLogErr("LPush", err)
 		return
 	}
-	// 5分钟过期
-	_5min, err := time.ParseDuration("5m")
-	if err != nil {
-		lib.XLogErr("ParseDuration", err)
-	} else {
-		if err := db.Expire(result_key, _5min); err != nil {
-			lib.XLogErr("Expire", err, result_key)
-		}
+	if err := db.Expire(result_key, g_iKeyExpire); err != nil {
+		lib.XLogErr("Expire", err, result_key)
 	}
 	lib.XLogInfo("result_key", result_key)
 
@@ -327,6 +333,7 @@ func ProcessSearch(tb model.TBot, msg *model.Message){
 		first_slice = total_keys[0 : g_iPageCount]
 	}
 
+	lib.XLogInfo(first_slice)
 	mapTitle, _ := GetTitleAndDesMap(first_slice)
 	send_config := model.SendMessageConfig{}
 	send_config.ChatID = msg.Chat.ID
@@ -346,22 +353,9 @@ func ProcessSearch(tb model.TBot, msg *model.Message){
 	i := 0
 	for k, v := range mapTitle {
 		title := v
-		config := model.GetChatConfig{}
-		groupid, err := strconv.ParseInt(k, 10, 64)
-		if err != nil {
-			lib.XLogErr("ParseInt", err, k)
-			continue
-		}
-		config.ChatID = groupid
-		err = tb.Call(&config)
-		if err != nil {
-			lib.XLogErr(err, config)
-			continue
-		}
-
 		url := model.MessageEntity{}
 		url.Type = "text_link"
-		url.URL = "https://t.me/" + config.Response.UserName
+		url.URL = "https://t.me/" + k
 		url.Offset = GetUTF16Len(msg_content)
 		show_text := strconv.Itoa(i + 1) + ". " + title
 		url.Length = GetUTF16Len(show_text)
@@ -413,27 +407,14 @@ func GetSearchTextAndEntities(tb model.TBot, key string, cursor int64)(error, st
 		msg_content += v + "\n"
 	}
 
-	i := 0
+	i := cursor + 1
 	for k, v := range mapTitle {
 		title := v
-		config := model.GetChatConfig{}
-		groupid, err := strconv.ParseInt(k, 10, 64)
-		if err != nil {
-			lib.XLogErr("ParseInt", err, k)
-			continue
-		}
-		config.ChatID = groupid
-		err = tb.Call(&config)
-		if err != nil {
-			lib.XLogErr(err, config)
-			continue
-		}
-
 		url := model.MessageEntity{}
 		url.Type = "text_link"
-		url.URL = "https://t.me/" + config.Response.UserName
+		url.URL = "https://t.me/" + k
 		url.Offset = GetUTF16Len(msg_content)
-		show_text := strconv.Itoa(i + 1) + ". " + title
+		show_text := strconv.FormatInt(i, 10) + ". " + title
 		url.Length = GetUTF16Len(show_text)
 		entities = append(entities, url)
 		msg_content += show_text + "\n"
@@ -453,18 +434,34 @@ func AnswerCallback(tb model.TBot, queryid, text string){
 }
 
 func AddtoBlack(tb model.TBot, chatid, userid int64){
-	return
+	config := model.RestrictChatMemberConfig{}
+	config.ChatID = chatid
+	config.UserID = userid
+
+	perm := model.ChatPermissions{}
+	perm.CanSendMessages = false
+	config.Permissions = perm
+
+	tb.Call(&config)
+	lib.XLogInfo("addtoblack", chatid, userid)
 }
 
 func ProcessCallback(tb model.TBot, callback *model.CallbackQuery){
 	if strings.HasPrefix(callback.Data, "addtoblack"){
 		msg := callback.Message
-		operator := msg.From.UserName
+		operator := callback.From.UserName
 		if !CheckSuperUser(operator) {
-			Warning(tb, msg.Chat.ID, msg.MessageID, msg.From.UserName, "别乱点!")
+			Warning(tb, msg.Chat.ID, msg.MessageID, callback.From.UserName, callback.From.ID, "别乱点!")
 			return
 		}
-		return AddtoBlack(tb, msg.Chat.ChatID, msg.From.ID)
+		items := strings.Split(callback.Data, "_")
+		userid, err := strconv.ParseInt(items[1], 10, 64)
+		if err != nil {
+			lib.XLogErr("ParseInt", err, items)
+			return
+		}
+		AddtoBlack(tb, msg.Chat.ID, userid)
+		return
 	}
 	items := strings.Split(callback.Data, "$$")
 	if len(items) != 3{
@@ -561,7 +558,7 @@ func SendText(tb model.TBot, chatid int64, text string){
 	tb.Call(&config)
 }
 
-func Warning(tb model.TBot, chatid int64, msgid int, username, text string){
+func Warning(tb model.TBot, chatid int64, msgid int, username string, userid int64, text string){
 	config := model.SendMessageConfig{}
 	config.ChatID = chatid
 	msg_content := text
@@ -576,7 +573,7 @@ func Warning(tb model.TBot, chatid int64, msgid int, username, text string){
 	msg_content += "\n@" + username + ""
 
 	addblack := model.InlineKeyboardButton{Text:"拉黑他"}
-	addblack_text := "addtoblack_" + username
+	addblack_text := "addtoblack_" + strconv.FormatInt(userid, 10)
 	addblack.CallbackData = &addblack_text
 	var buttons []model.InlineKeyboardButton
 	buttons = append(buttons, addblack)
@@ -591,6 +588,7 @@ func Warning(tb model.TBot, chatid int64, msgid int, username, text string){
 }
 
 func ProcessCommand(tb model.TBot, msg *model.Message){
+	lib.XLogInfo("ProcessCommand", msg)
 	from_user := msg.From.UserName
 	hit := false
 	for _, user := range g_lSuperUser{
@@ -606,6 +604,11 @@ func ProcessCommand(tb model.TBot, msg *model.Message){
 	}
 	for _, et := range msg.Entities {
 		if et.Type == "bot_command" {
+			if len(msg.Text) < et.Offset + et.Length{
+				lib.XLogErr("invalid command, maybe search", et, msg.Text)
+				go ProcessSearch(tb, msg)
+				continue
+			}
 			cmd := msg.Text[et.Offset + 1 : et.Offset + et.Length]
 			args := ""
 			if len(msg.Text) > et.Length {
@@ -665,9 +668,9 @@ func ProcessCommand(tb model.TBot, msg *model.Message){
 				continue
 			}
 			if realcmd == "addgroup"{
-				err = Index(config.Response.ID, config.Response.Title, config.Response.Description)
+				err = Index(config.Response.UserName, config.Response.Title, config.Response.Description)
 			} else if realcmd == "delgroup"{
-				err = DeleteIndex(config.Response.ID)
+				err = DeleteIndex(config.Response.UserName)
 			}
 			if err != nil {
 				lib.XLogErr(err, realcmd, config.Response)
@@ -695,7 +698,7 @@ func main(){
 		if update.Message != nil && len(update.Message.Text) > 0{
 			if HasBotCommand(update.Message){
 				go ProcessCommand(tb, update.Message)
-			} else {
+			} else if update.Message.Chat.Type != "private" {
 				go ProcessSearch(tb, update.Message)
 			}
 		}
